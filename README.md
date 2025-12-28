@@ -24,7 +24,7 @@ This QBit lets users save these configurations as named views. Create a view, ad
 
 ### Prerequisites
 
-- QQQ application (v0.20+)
+- QQQ application (v0.35.0+)
 - QQQ dashboard deployed
 - Database backend configured
 
@@ -34,9 +34,9 @@ Add to your `pom.xml`:
 
 ```xml
 <dependency>
-    <groupId>io.qrun</groupId>
+    <groupId>com.kingsrook.qbits</groupId>
     <artifactId>qbit-customizable-table-views</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
