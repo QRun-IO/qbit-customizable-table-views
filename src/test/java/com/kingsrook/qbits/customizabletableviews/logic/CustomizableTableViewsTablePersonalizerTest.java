@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import com.kingsrook.qbits.customizabletableviews.BaseTest;
 import com.kingsrook.qbits.customizabletableviews.QFieldMetaDataAssert;
 import com.kingsrook.qbits.customizabletableviews.model.CustomizableTable;
+import com.kingsrook.qbits.customizabletableviews.model.CustomizableTableViewsFieldMetaData;
 import com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel;
 import com.kingsrook.qbits.customizabletableviews.model.TableView;
 import com.kingsrook.qbits.customizabletableviews.model.TableViewField;
@@ -61,6 +62,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.SectionFactory;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
@@ -543,6 +546,157 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
          QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
          QFieldMetaDataAssert.assertThat(tableMetaData.getField("mandatory")).isNotNull();
          QFieldMetaDataAssert.assertThat(tableMetaData.getField("createDate")).isNotNull();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFieldsInSecurityLocks()
+   {
+      ///////////////////////////
+      // empty with empty case //
+      ///////////////////////////
+      QTableMetaData baseTable = new QTableMetaData()
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("a", QFieldType.STRING))
+         .withField(new QFieldMetaData("b", QFieldType.STRING))
+         .withField(new QFieldMetaData("c", QFieldType.STRING))
+         .withField(new QFieldMetaData("d", QFieldType.STRING));
+
+      //////////////////////////////////////////////////////
+      // with no security field, only id should come back //
+      //////////////////////////////////////////////////////
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+
+      ///////////////////////////////////////////////////////
+      // with a simple security field, it should come back //
+      ///////////////////////////////////////////////////////
+      baseTable.setRecordSecurityLocks(List.of(
+         new RecordSecurityLock().withFieldName("a")
+      ));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(2, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("a")).isNotNull();
+      }
+
+      /////////////////////////////////////////////////////////////
+      // with a multi-lock, all included fields should come back //
+      /////////////////////////////////////////////////////////////
+      baseTable.setRecordSecurityLocks(List.of(
+         new MultiRecordSecurityLock()
+            .withOperator(MultiRecordSecurityLock.BooleanOperator.OR)
+            .withLocks(List.of(
+               new RecordSecurityLock().withFieldName("b"),
+               new MultiRecordSecurityLock()
+                  .withOperator(MultiRecordSecurityLock.BooleanOperator.AND)
+                  .withLocks(List.of(
+                     new RecordSecurityLock().withFieldName("c"),
+                     new RecordSecurityLock().withFieldName("d")
+                  ))
+            ))
+      ));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(4, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("b")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("c")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("d")).isNotNull();
+      }
+
+      ///////////////////////////////////////////////////////////
+      // make sure lock field from join table doesn't break us //
+      ///////////////////////////////////////////////////////////
+      baseTable.setRecordSecurityLocks(List.of(
+         new RecordSecurityLock().withFieldName("join.a")
+      ));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFieldsWithSupplementalMetaData()
+   {
+      ///////////////////////////
+      // empty with empty case //
+      ///////////////////////////
+      QTableMetaData baseTable = new QTableMetaData()
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("a", QFieldType.STRING))
+         .withField(new QFieldMetaData("b", QFieldType.STRING))
+         .withField(new QFieldMetaData("c", QFieldType.STRING))
+         .withField(new QFieldMetaData("d", QFieldType.STRING));
+
+      //////////////////////////////////
+      // base case, should just be id //
+      //////////////////////////////////
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+
+      ///////////////////////////////////////////////////////////////////////
+      // supplemental meta data, but without a rule should not be included //
+      ///////////////////////////////////////////////////////////////////////
+      baseTable.getField("a").withSupplementalMetaData(new CustomizableTableViewsFieldMetaData());
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // supplemental meta data, with the include rule should be included //
+      //////////////////////////////////////////////////////////////////////
+      baseTable.getField("b").withSupplementalMetaData(new CustomizableTableViewsFieldMetaData()
+         .withRule(CustomizableTableViewsFieldMetaData.Rule.ALWAYS_KEEP_FIELD));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(2, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("b")).isNotNull();
       }
    }
 
