@@ -23,7 +23,7 @@
   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
    <properties>
-      <revision>0.2.3-SNAPSHOT</revision>
+      <revision>0.2.4-SNAPSHOT</revision>
    </properties>
 
    <parent>
@@ -34,7 +34,7 @@
 
    <groupId>com.kingsrook.qbits</groupId>
    <artifactId>qbit-customizable-table-views</artifactId>
-   <version>${revision}</version>
+   <version>0.2.4-SNAPSHOT</version>
    <packaging>jar</packaging>
 
    <name>QBit Customizable Table Views</name>
@@ -117,5 +117,12 @@
          <scope>test</scope>
       </dependency>
    </dependencies>
+
+   <repositories>
+      <repository>
+         <id>sonatype-snapshots</id>
+         <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+      </repository>
+   </repositories>
 
 </project>
