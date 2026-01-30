@@ -37,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qbits.customizabletableviews.model.CustomizableTable;
+import com.kingsrook.qbits.customizabletableviews.model.CustomizableTableViewsFieldMetaData;
 import com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel;
 import com.kingsrook.qbits.customizabletableviews.model.TableView;
 import com.kingsrook.qbits.customizabletableviews.model.TableViewField;
@@ -70,6 +71,9 @@ import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
@@ -262,7 +266,7 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
    /***************************************************************************
     *
     ***************************************************************************/
-   private Set<String> getFieldsToKeepFromJoinTable(String joinTableName, AbstractTableActionInput tableActionInput, Map<String, Set<String>> getFieldsToKeepFromJoinTableCache)
+   protected Set<String> getFieldsToKeepFromJoinTable(String joinTableName, AbstractTableActionInput tableActionInput, Map<String, Set<String>> getFieldsToKeepFromJoinTableCache)
    {
       return (getFieldsToKeepFromJoinTableCache.computeIfAbsent(joinTableName, k ->
       {
@@ -298,7 +302,7 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
    /***************************************************************************
     *
     ***************************************************************************/
-   private static Map<String, QFieldMetaData> getFieldsToKeepForTable(TableView tableView, QTableMetaData cloneTable, AbstractTableActionInput tableActionInput)
+   protected Map<String, QFieldMetaData> getFieldsToKeepForTable(TableView tableView, QTableMetaData cloneTable, AbstractTableActionInput tableActionInput)
    {
       Map<String, QFieldMetaData> cloneFields = cloneTable.getFields();
       if(cloneFields == null)
@@ -339,39 +343,125 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
       /////////////////////////////////////////////
       // next look for ones that always get kept //
       /////////////////////////////////////////////
-      boolean isInsertOrUpdate = (tableActionInput instanceof InsertInput) || (tableActionInput instanceof UpdateInput);
       for(QFieldMetaData field : cloneTable.getFields().values())
       {
          String fieldName = field.getName();
-         if(fieldsToKeep.containsKey(fieldName))
+         if(!fieldsToKeep.containsKey(fieldName))
          {
-            continue;
-         }
-
-         DynamicDefaultValueBehavior x    = null;
-         boolean                     keep = false;
-         if(field.getIsRequired() || Objects.equals(fieldName, cloneTable.getPrimaryKeyField()))
-         {
-            ///////////////////////////////////////////////////////////
-            // always keep the primary key field and required fields //
-            ///////////////////////////////////////////////////////////
-            keep = true;
-         }
-         else if(isInsertOrUpdate && field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class) != null)
-         {
-            //////////////////////////////////////////////////////////////////////////////////////////////////////
-            // if this is for an insert or update, then keep any fields that have a DynamicDefaultValueBehavior //
-            // e.g., createDates, modifyDates, things that capture userId                                       //
-            //////////////////////////////////////////////////////////////////////////////////////////////////////
-            keep = true;
-         }
-
-         if(keep)
-         {
-            fieldsToKeep.put(fieldName, cloneFields.get(fieldName));
+            if(shouldKeepFieldDueToRules(cloneTable, field, tableActionInput))
+            {
+               fieldsToKeep.put(fieldName, cloneFields.get(fieldName));
+            }
          }
       }
+
       return fieldsToKeep;
+   }
+
+
+
+   /***************************************************************************
+    * check if any system-defined rules make it so that a field should always
+    * be kept.
+    *
+    * <p>built-in rules are:</p>
+    * <ul>
+    * <li>field is required</li>
+    * <li>field is primary key</li>
+    * <li>field is part of table's security locks</li>
+    * <li>there's supplemental metadata from this qbit that says to keep the field</li>
+    * <li>this is an insert or update, and there's a {@link DynamicDefaultValueBehavior}</li>
+    * </ul>
+    *
+    * also - an application could override this method in a subclass to add
+    * additional rules.
+    ***************************************************************************/
+   protected boolean shouldKeepFieldDueToRules(QTableMetaData cloneTable, QFieldMetaData field, AbstractTableActionInput tableActionInput)
+   {
+      if(field.getIsRequired() || Objects.equals(field.getName(), cloneTable.getPrimaryKeyField()))
+      {
+         ///////////////////////////////////////////////////////////
+         // always keep the primary key field and required fields //
+         ///////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      if(doRecordSecurityLocksContainField(cloneTable.getRecordSecurityLocks(), field))
+      {
+         /////////////////////////////////////////////////////////////
+         // keep fields that are part of the table's security locks //
+         /////////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      if(doesSupplementalMetaDataSayToKeepField(field))
+      {
+         //////////////////////////////////////////////////////////
+         // keep a field if it's marked as being always-included //
+         //////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      boolean isInsertOrUpdate = (tableActionInput instanceof InsertInput) || (tableActionInput instanceof UpdateInput);
+      if(isInsertOrUpdate && field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class) != null)
+      {
+         //////////////////////////////////////////////////////////////////////////////////////////////////////
+         // if this is for an insert or update, then keep any fields that have a DynamicDefaultValueBehavior //
+         // e.g., createDates, modifyDates, things that capture userId                                       //
+         //////////////////////////////////////////////////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      ////////////////////////////////////////////
+      // by default, no rule matched, so say no //
+      ////////////////////////////////////////////
+      return (false);
+   }
+
+
+
+   /***************************************************************************
+    * Check if the supplemental meta data from this qbit for a field says
+    * that the field should always be kept.
+    ***************************************************************************/
+   protected boolean doesSupplementalMetaDataSayToKeepField(QFieldMetaData field)
+   {
+      QSupplementalFieldMetaData supplementalMetaData = field.getSupplementalMetaData(CustomizableTableViewsFieldMetaData.TYPE);
+      if(supplementalMetaData instanceof CustomizableTableViewsFieldMetaData customizableTableViewsFieldMetaData)
+      {
+         if(CustomizableTableViewsFieldMetaData.Rule.ALWAYS_KEEP_FIELD.equals(customizableTableViewsFieldMetaData.getRule()))
+         {
+            return (true);
+         }
+      }
+
+      return (false);
+   }
+
+
+
+   /***************************************************************************
+    * Check if a list of record security locks include a field, recursively 
+    * processing {@link MultiRecordSecurityLock}s
+    ***************************************************************************/
+   protected boolean doRecordSecurityLocksContainField(List<RecordSecurityLock> locks, QFieldMetaData field)
+   {
+      for(RecordSecurityLock recordSecurityLock : CollectionUtils.nonNullList(locks))
+      {
+         if(recordSecurityLock instanceof MultiRecordSecurityLock multiRecordSecurityLock)
+         {
+            if(doRecordSecurityLocksContainField(multiRecordSecurityLock.getLocks(), field))
+            {
+               return (true);
+            }
+         }
+         else if(field.getName().equals(recordSecurityLock.getFieldName()))
+         {
+            return true;
+         }
+      }
+
+      return false;
    }
 
 
