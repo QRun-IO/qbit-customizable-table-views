@@ -64,7 +64,7 @@ public class TableViewFieldCustomizer implements TableCustomizerInterface
             String   tableName = parts[0];
             fieldName = parts[1];
 
-            QFieldMetaData field = QContext.getQInstance().getTable(tableName).getField(fieldName);
+            QFieldMetaData field = QContext.getQInstance().getTable(tableName).getFieldOrVirtualField(fieldName);
 
             FieldAccessLevel fieldAccessLevel = FieldAccessLevel.getById(accessLevelId);
             if(fieldAccessLevel != null)
