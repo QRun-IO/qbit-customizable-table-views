@@ -59,6 +59,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
 import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
@@ -495,6 +496,85 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       assertEquals(2, tableMetaData.getFields().size());
       assertEquals(3, tableMetaData.getSections().size()); // one for id, one for mandatory, and 1 for our widget
       assertEquals(List.of("s0", "s1", "w0"), tableMetaData.getSections().stream().map(s -> s.getName()).toList());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testApplyViewToTableWithVirtualFields()
+   {
+      CustomizableTableViewsTablePersonalizer personalizer = new CustomizableTableViewsTablePersonalizer();
+      TableMetaDataInput                      tableActionInput = new TableMetaDataInput();
+
+      QTableMetaData baseTable = new QTableMetaData()
+         .withName("vfTable")
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("optional", QFieldType.STRING))
+         .withVirtualField(new QVirtualFieldMetaData("computed", QFieldType.STRING).withLabel("Computed"))
+         .withVirtualField(new QVirtualFieldMetaData("derived", QFieldType.STRING).withLabel("Derived"))
+         .withSection(SectionFactory.defaultT1("id").withName("s0"))
+         .withSection(SectionFactory.defaultT2("optional").withName("s1"));
+
+      /////////////////////////////////////////////////////////////////////////////////
+      // empty view - no virtual fields kept (no "always keep" rules for virtuals)  //
+      /////////////////////////////////////////////////////////////////////////////////
+      QTableMetaData tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of()),
+         baseTable.clone(), tableActionInput);
+
+      assertEquals(1, tableMetaData.getFields().size());
+      assertNotNull(tableMetaData.getField("id"));
+      assertTrue(tableMetaData.getVirtualFields().isEmpty());
+
+      ///////////////////////////////////////////////////////////////
+      // view references one virtual field - only that one is kept //
+      ///////////////////////////////////////////////////////////////
+      tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of(
+            new TableViewField().withFieldName("vfTable.computed").withAccessLevel(READ_ONLY)
+         )),
+         baseTable.clone(), tableActionInput);
+
+      assertEquals(1, tableMetaData.getFields().size());
+      assertEquals(1, tableMetaData.getVirtualFields().size());
+      assertNotNull(tableMetaData.getVirtualFields().get("computed"));
+      assertNull(tableMetaData.getVirtualFields().get("derived"));
+
+      /////////////////////////////////////////////////////////////////////////////
+      // view references both virtual fields and a regular field - all are kept //
+      /////////////////////////////////////////////////////////////////////////////
+      tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of(
+            new TableViewField().withFieldName("vfTable.optional").withAccessLevel(EDITABLE_OPTIONAL),
+            new TableViewField().withFieldName("vfTable.computed").withAccessLevel(READ_ONLY),
+            new TableViewField().withFieldName("vfTable.derived").withAccessLevel(READ_ONLY)
+         )),
+         baseTable.clone(), tableActionInput);
+
+      assertEquals(2, tableMetaData.getFields().size()); // id + optional
+      assertEquals(2, tableMetaData.getVirtualFields().size()); // computed + derived
+
+      assertEquals(List.of("optional"), tableMetaData.getSection("s1").getFieldNames());
+
+      //////////////////////////////////////////////////////////////////
+      // table with no virtual fields at all - should not break       //
+      //////////////////////////////////////////////////////////////////
+      QTableMetaData noVfTable = new QTableMetaData()
+         .withName("noVfTable")
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withSection(SectionFactory.defaultT1("id").withName("s0"));
+
+      tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of()),
+         noVfTable.clone(), tableActionInput);
+
+      assertEquals(1, tableMetaData.getFields().size());
+      assertTrue(tableMetaData.getVirtualFields() == null || tableMetaData.getVirtualFields().isEmpty());
    }
 
 

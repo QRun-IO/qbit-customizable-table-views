@@ -25,12 +25,16 @@ package com.kingsrook.qbits.customizabletableviews.model;
 import java.util.function.BiFunction;
 import com.kingsrook.qbits.customizabletableviews.BaseTest;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import org.junit.jupiter.api.Test;
 import static com.kingsrook.qbits.customizabletableviews.QFieldMetaDataAssert.assertThat;
 import static com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel.EDITABLE_OPTIONAL;
 import static com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel.EDITABLE_REQUIRED;
 import static com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel.READ_ONLY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 
 /*******************************************************************************
@@ -120,6 +124,33 @@ class FieldAccessLevelTest extends BaseTest
       assertThat(doApply.apply(EDITABLE_OPTIONAL, hiddenField)).isHidden().isNotRequired().isEditable(); // no changes
       assertThat(doApply.apply(EDITABLE_REQUIRED, hiddenField)).isHidden().isNotRequired().isEditable(); // no changes
       assertThat(doApply.apply(READ_ONLY, hiddenField))/*....*/.isHidden().isNotRequired().isEditable(); // no changes
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testValidateForVirtualField()
+   {
+      ///////////////////////////////////////////////////////////////////////////////////
+      // a virtual field (even if editable) should be treated as read-only by validate //
+      ///////////////////////////////////////////////////////////////////////////////////
+      QVirtualFieldMetaData editableVirtualField = new QVirtualFieldMetaData("vf", QFieldType.STRING).withIsEditable(true);
+
+      assertNull(READ_ONLY.validateForField(editableVirtualField));
+      assertNotNull(EDITABLE_REQUIRED.validateForField(editableVirtualField));
+      assertNotNull(EDITABLE_OPTIONAL.validateForField(editableVirtualField));
+
+      /////////////////////////////////////////////////
+      // a non-editable virtual field - same results //
+      /////////////////////////////////////////////////
+      QVirtualFieldMetaData readOnlyVirtualField = new QVirtualFieldMetaData("vf", QFieldType.STRING).withIsEditable(false);
+
+      assertNull(READ_ONLY.validateForField(readOnlyVirtualField));
+      assertNotNull(EDITABLE_REQUIRED.validateForField(readOnlyVirtualField));
+      assertNotNull(EDITABLE_OPTIONAL.validateForField(readOnlyVirtualField));
    }
 
 }

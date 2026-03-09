@@ -72,6 +72,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueB
 import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
@@ -177,6 +178,9 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
    {
       Map<String, QFieldMetaData> fieldsToKeep = getFieldsToKeepForTable(tableView, cloneTable, tableActionInput);
       cloneTable.setFields(fieldsToKeep);
+
+      Map<String, QVirtualFieldMetaData> virtualFieldsToKeep = getVirtualFieldsToKeepForTable(tableView, cloneTable, tableActionInput);
+      cloneTable.setVirtualFields(virtualFieldsToKeep);
 
       ///////////////////////////////////////////////////////////
       // remove field names which aren't present from sections //
@@ -354,6 +358,55 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
             }
          }
       }
+
+      return fieldsToKeep;
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected Map<String, QVirtualFieldMetaData> getVirtualFieldsToKeepForTable(TableView tableView, QTableMetaData cloneTable, AbstractTableActionInput tableActionInput)
+   {
+      Map<String, QVirtualFieldMetaData> cloneFields = cloneTable.getVirtualFields();
+      if(cloneFields == null)
+      {
+         return Collections.emptyMap();
+      }
+
+      Map<String, QVirtualFieldMetaData> fieldsToKeep = new LinkedHashMap<>();
+
+      /////////////////////////////////////////////
+      // figure out which fields the user gets   //
+      // start with ones in the user's TableView //
+      /////////////////////////////////////////////
+      for(TableViewField tableViewField : CollectionUtils.nonNullList(tableView.getFields()))
+      {
+         try
+         {
+            String                fieldName     = tableViewField.getFieldName().split("\\.")[1];
+            QVirtualFieldMetaData fieldMetaData = cloneFields.get(fieldName);
+            if(fieldMetaData != null)
+            {
+               FieldAccessLevel fieldAccessLevel = FieldAccessLevel.getById(tableViewField.getAccessLevel());
+               if(fieldAccessLevel != null)
+               {
+                  fieldAccessLevel.apply(fieldMetaData);
+               }
+
+               fieldsToKeep.put(fieldName, fieldMetaData);
+            }
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error processing tableViewField", e, logPair("fieldName", tableViewField.getFieldName()));
+         }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // unlike normal fields, there are no 'always keep' rules for virtual fields //
+      ///////////////////////////////////////////////////////////////////////////////
 
       return fieldsToKeep;
    }
