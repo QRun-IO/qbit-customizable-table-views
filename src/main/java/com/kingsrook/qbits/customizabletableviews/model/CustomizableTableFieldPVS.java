@@ -97,7 +97,7 @@ public class CustomizableTableFieldPVS implements QCustomPossibleValueProvider<S
                return (new QPossibleValue<>(idString, fieldMetaData.getLabel()));
             }
 
-            fieldMetaData = table.getVirtualFields().get(fieldName);
+            fieldMetaData = table.getVirtualFields() == null ? null : table.getVirtualFields().get(fieldName);
             if(fieldMetaData != null)
             {
                return (new QPossibleValue<>(idString, fieldMetaData.getLabel()));
