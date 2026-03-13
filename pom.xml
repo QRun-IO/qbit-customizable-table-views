@@ -65,7 +65,7 @@
    </scm>
 
    <properties>
-      <revision>0.4.0-RC.1</revision>
+      <revision>0.4.0</revision>
    </properties>
 
    <dependencyManagement>
