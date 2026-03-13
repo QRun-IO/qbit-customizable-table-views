@@ -24,6 +24,7 @@ package com.kingsrook.qbits.customizabletableviews.model;
 
 import java.util.Objects;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValueEnum;
 import com.kingsrook.qqq.backend.core.model.metadata.producers.annotations.QMetaDataProducingPossibleValueEnum;
 
@@ -204,7 +205,7 @@ public enum FieldAccessLevel implements PossibleValueEnum<String>
          return ("This field is defined as hidden by the system - you may not make it " + getLabel());
       }
 
-      if(!fieldMetaData.getIsEditable())
+      if(!fieldMetaData.getIsEditable() || fieldMetaData instanceof QVirtualFieldMetaData)
       {
          if(this == READ_ONLY)
          {

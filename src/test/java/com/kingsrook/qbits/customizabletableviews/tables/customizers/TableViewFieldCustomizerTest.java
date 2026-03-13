@@ -32,6 +32,7 @@ import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -70,6 +71,27 @@ class TableViewFieldCustomizerTest extends BaseTest
       assertNoError(new TableViewField().withFieldName("testTable.optional").withAccessLevel(FieldAccessLevel.READ_ONLY));
       assertNoError(new TableViewField().withFieldName("testTable.optional").withAccessLevel(FieldAccessLevel.EDITABLE_REQUIRED));
       assertNoError(new TableViewField().withFieldName("testTable.optional").withAccessLevel(FieldAccessLevel.EDITABLE_OPTIONAL));
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testVirtualField() throws QException
+   {
+      QContext.getQInstance().addTable(new QTableMetaData()
+         .withName("testTable2")
+         .withField(new QFieldMetaData("id", QFieldType.STRING))
+         .withVirtualField(new QVirtualFieldMetaData("virtualField", QFieldType.STRING).withLabel("Virtual")));
+
+      //////////////////////////////////////////////////////////////////////////////
+      // virtual fields are treated as read-only, so only READ_ONLY should pass. //
+      //////////////////////////////////////////////////////////////////////////////
+      assertNoError(new TableViewField().withFieldName("testTable2.virtualField").withAccessLevel(FieldAccessLevel.READ_ONLY));
+      assertError(new TableViewField().withFieldName("testTable2.virtualField").withAccessLevel(FieldAccessLevel.EDITABLE_REQUIRED));
+      assertError(new TableViewField().withFieldName("testTable2.virtualField").withAccessLevel(FieldAccessLevel.EDITABLE_OPTIONAL));
    }
 
 

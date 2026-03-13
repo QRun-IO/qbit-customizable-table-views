@@ -1,4 +1,18 @@
-# qbit-customizable-table-views
+# QBit: Customizable Table Views
+[![Build Status](https://dl.circleci.com/status-badge/img/gh/Kingsrook/qbit-customizable-table-views/tree/develop.svg?style=svg)](https://circleci.com/gh/Kingsrook/qbit-customizable-table-views)
+[![Maven Central](https://img.shields.io/maven-central/v/com.kingsrook.qbits/qbit-customizable-table-views.svg)](https://central.sonatype.com/namespace/com.kingsrook.qbits)
+[![Java](https://img.shields.io/badge/java-17+-blue.svg)](https://adoptium.net/)
+[![License](https://img.shields.io/badge/license-AGPL%203.0-green.svg)](LICENSE.txt)
+
+**QBit Customizable Table Views** provides table personalization capabilities for QQQ applications, allowing users to customize which fields and widgets they see based on their roles and permissions.
+
+## 🚀 What Makes This QBit Different?
+
+**Role-Based Table Customization** - This QBit enables fine-grained control over table presentation without modifying application code. Users see different fields and widgets based on their assigned roles, providing a personalized experience while maintaining security and data integrity.
+
+## 🔓 Open Source & Full Control
+
+**This QBit is 100% open source** - you have complete ownership and control:
 
 User-defined saved views for QQQ dashboard tables.
 

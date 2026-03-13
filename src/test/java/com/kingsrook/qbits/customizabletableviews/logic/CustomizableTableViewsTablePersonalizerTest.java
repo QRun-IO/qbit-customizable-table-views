@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import com.kingsrook.qbits.customizabletableviews.BaseTest;
 import com.kingsrook.qbits.customizabletableviews.QFieldMetaDataAssert;
 import com.kingsrook.qbits.customizabletableviews.model.CustomizableTable;
+import com.kingsrook.qbits.customizabletableviews.model.CustomizableTableViewsFieldMetaData;
 import com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel;
 import com.kingsrook.qbits.customizabletableviews.model.TableView;
 import com.kingsrook.qbits.customizabletableviews.model.TableViewField;
@@ -44,6 +45,8 @@ import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.AbstractTableActionInput;
+import com.kingsrook.qqq.backend.core.model.actions.metadata.TableMetaDataInput;
 import com.kingsrook.qqq.backend.core.model.actions.metadata.personalization.TableMetaDataPersonalizerInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
@@ -51,8 +54,17 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
+import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinOn;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.JoinType;
+import com.kingsrook.qqq.backend.core.model.metadata.joins.QJoinMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.SectionFactory;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
@@ -262,8 +274,10 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
    {
       CustomizableTableViewsTablePersonalizer personalizer = new CustomizableTableViewsTablePersonalizer();
 
-      String tableWithoutDefaultView = "tableWithoutDefaultView";
-      String tableWithDefaultView    = "tableWithDefaultView";
+      String  tableWithoutDefaultView   = "tableWithoutDefaultView";
+      String  tableWithDefaultView      = "tableWithDefaultView";
+      Integer tableWithoutDefaultViewId = 1;
+      Integer tableWithDefaultViewId    = 2;
 
       QContext.getQInstance().addTable(new QTableMetaData()
          .withName(tableWithDefaultView)
@@ -272,8 +286,8 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
          .withField(new QFieldMetaData("c", QFieldType.STRING)));
 
       new InsertAction().execute(new InsertInput(CustomizableTable.TABLE_NAME).withRecordEntities(List.of(
-         new CustomizableTable().withId(1).withTableName(tableWithoutDefaultView).withDefaultTableViewId(null),
-         new CustomizableTable().withId(2).withTableName(tableWithDefaultView).withDefaultTableViewId(1)
+         new CustomizableTable().withId(tableWithoutDefaultViewId).withTableName(tableWithoutDefaultView).withDefaultTableViewId(null),
+         new CustomizableTable().withId(tableWithDefaultViewId).withTableName(tableWithDefaultView).withDefaultTableViewId(1)
       )));
 
       //////////////////////
@@ -293,6 +307,13 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       QContext.getQSession().setValue("roleIds", "");
       assertEmptyView(personalizer.getEffectiveTableViewForCurrentSession(tableWithoutDefaultView));
 
+      /////////////////////////////////////////////////////////////////////////////////////////////////
+      // put roles in session - there still aren't any view-role-int's for this table, so empty view //
+      /////////////////////////////////////////////////////////////////////////////////////////////////
+      QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
+      QContext.getQSession().setValue("roleIds", "1,2");
+      assertEmptyView(personalizer.getEffectiveTableViewForCurrentSession(tableWithoutDefaultView));
+
       //////////////////////////////////////////////////////////////////////////////////////
       // this table has a defaultViewId, but that view doesn't exist, so get null for now //
       //////////////////////////////////////////////////////////////////////////////////////
@@ -300,30 +321,23 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       QContext.getQSession().setValue("roleIds", null);
       assertEmptyView(personalizer.getEffectiveTableViewForCurrentSession(tableWithDefaultView));
 
-      /////////////////////
-      // insert the view //
-      /////////////////////
+      ////////////////////////////////////////////////
+      // insert that default view, and a few others //
+      ////////////////////////////////////////////////
       new InsertAction().execute(new InsertInput(TableView.TABLE_NAME).withRecordEntities(List.of(
-         new TableView().withId(1).withCustomizableTableId(2).withName("a").withFields(List.of(new TableViewField().withFieldName(tableWithDefaultView + ".a").withAccessLevel(EDITABLE_OPTIONAL))),
-         new TableView().withId(2).withCustomizableTableId(2).withName("b").withFields(List.of(new TableViewField().withFieldName(tableWithDefaultView + ".b").withAccessLevel(EDITABLE_OPTIONAL))),
-         new TableView().withId(3).withCustomizableTableId(2).withName("c").withFields(List.of(new TableViewField().withFieldName(tableWithDefaultView + ".c").withAccessLevel(EDITABLE_OPTIONAL)))
+         new TableView().withId(1).withCustomizableTableId(tableWithDefaultViewId).withName("a").withFields(List.of(new TableViewField().withFieldName(tableWithDefaultView + ".a").withAccessLevel(EDITABLE_OPTIONAL))),
+         new TableView().withId(2).withCustomizableTableId(tableWithDefaultViewId).withName("b").withFields(List.of(new TableViewField().withFieldName(tableWithDefaultView + ".b").withAccessLevel(EDITABLE_OPTIONAL))),
+         new TableView().withId(3).withCustomizableTableId(tableWithDefaultViewId).withName("c").withFields(List.of(new TableViewField().withFieldName(tableWithDefaultView + ".c").withAccessLevel(EDITABLE_OPTIONAL)))
       )));
 
-      ///////////////////////
-      // now we can get it //
-      ///////////////////////
+      ////////////////////////////////////////////////////
+      // now we can get the default view for this table //
+      ////////////////////////////////////////////////////
       QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
       QContext.getQSession().setValue("roleIds", null);
       assertThat(personalizer.getEffectiveTableViewForCurrentSession(tableWithDefaultView))
          .isNotNull()
          .extracting("name").isEqualTo("a");
-
-      /////////////////////////////////////////////////////////////
-      // put roles in session - but fail to find a view-role-int //
-      /////////////////////////////////////////////////////////////
-      QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
-      QContext.getQSession().setValue("roleIds", "1,2");
-      assertEmptyView(personalizer.getEffectiveTableViewForCurrentSession(tableWithoutDefaultView));
 
       ///////////////////////////////
       // build some view-role ints //
@@ -339,7 +353,7 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       //////////////////////////////////////////
       QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
       QContext.getQSession().setValue("roleIds", "1");
-      assertThat(personalizer.getEffectiveTableViewForCurrentSession(tableWithoutDefaultView))
+      assertThat(personalizer.getEffectiveTableViewForCurrentSession(tableWithDefaultView))
          .isNotNull()
          .extracting("name").isEqualTo("a");
 
@@ -348,23 +362,20 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       ////////////////////////////////////////////////////
       QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
       QContext.getQSession().setValue("roleIds", "2");
-      assertThat(personalizer.getEffectiveTableViewForCurrentSession(tableWithoutDefaultView))
+      assertThat(personalizer.getEffectiveTableViewForCurrentSession(tableWithDefaultView))
          .isNotNull()
          .extracting("name").isEqualTo("b");
 
       /////////////////////////////////////////////////////////////////////////////
       // find 2 views (and when they merge, their name is lost) through role int //
+      // do this last lookup twice, clearing memory record store                 //
+      // in between to demonstrate memoization being used.                       //
       /////////////////////////////////////////////////////////////////////////////
       QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
       QContext.getQSession().setValue("roleIds", "2,3");
-
-      /////////////////////////////////////////////////////////////
-      // do this last lookup twice, clearing memory record store //
-      // in between to demonstrate memoization being used.       //
-      /////////////////////////////////////////////////////////////
       for(int i = 0; i < 2; i++)
       {
-         TableView effectiveTableViewForCurrentSession = personalizer.getEffectiveTableViewForCurrentSession(tableWithoutDefaultView);
+         TableView effectiveTableViewForCurrentSession = personalizer.getEffectiveTableViewForCurrentSession(tableWithDefaultView);
          assertThat(effectiveTableViewForCurrentSession)
             .isNotNull()
             .extracting("name").isNull();
@@ -400,17 +411,20 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       CustomizableTableViewsTablePersonalizer personalizer = new CustomizableTableViewsTablePersonalizer();
       QTableMetaData                          tableMetaData;
 
+      TableMetaDataInput tableActionInput = new TableMetaDataInput();
+
       ///////////////////////////
       // empty with empty case //
       ///////////////////////////
       tableMetaData = personalizer.applyViewToTable(
          new TableView(),
-         new QTableMetaData()
-      );
+         new QTableMetaData(),
+         tableActionInput);
       assertThat(tableMetaData.getFields()).isNullOrEmpty();
       assertThat(tableMetaData.getSections()).isNullOrEmpty();
 
       QTableMetaData baseTable = new QTableMetaData()
+         .withName("baseTable")
          .withPrimaryKeyField("id")
          .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
          .withField(new QFieldMetaData("secret", QFieldType.STRING).withIsHidden(true))
@@ -426,7 +440,7 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       ////////////////////////////////////////////////////////////////////////////////
       tableMetaData = personalizer.applyViewToTable(
          new TableView().withFields(List.of()),
-         baseTable.clone());
+         baseTable.clone(), tableActionInput);
 
       assertEquals(2, tableMetaData.getFields().size());
       QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotHidden().isNotEditable().isNotRequired();
@@ -444,12 +458,12 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
       tableMetaData = personalizer.applyViewToTable(
          new TableView().withFields(List.of(
-            new TableViewField().withFieldName("x.id").withAccessLevel(EDITABLE_OPTIONAL),
-            new TableViewField().withFieldName("x.secret").withAccessLevel(EDITABLE_OPTIONAL),
-            new TableViewField().withFieldName("x.mandatory").withAccessLevel(EDITABLE_OPTIONAL),
-            new TableViewField().withFieldName("x.optional").withAccessLevel(EDITABLE_OPTIONAL)
+            new TableViewField().withFieldName("baseTable.id").withAccessLevel(EDITABLE_OPTIONAL),
+            new TableViewField().withFieldName("baseTable.secret").withAccessLevel(EDITABLE_OPTIONAL),
+            new TableViewField().withFieldName("baseTable.mandatory").withAccessLevel(EDITABLE_OPTIONAL),
+            new TableViewField().withFieldName("baseTable.optional").withAccessLevel(EDITABLE_OPTIONAL)
          )),
-         baseTable.clone());
+         baseTable.clone(), tableActionInput);
 
       assertEquals(4, tableMetaData.getFields().size());
       QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotHidden().isNotEditable().isNotRequired();
@@ -478,10 +492,292 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
          new TableView().withWidgets(List.of(
             new TableViewWidget().withWidgetName("lilWidgy").withAccessLevel(WidgetAccessLevel.HAS_ACCESS)
          )),
-         baseTable.clone());
+         baseTable.clone(), tableActionInput);
       assertEquals(2, tableMetaData.getFields().size());
       assertEquals(3, tableMetaData.getSections().size()); // one for id, one for mandatory, and 1 for our widget
       assertEquals(List.of("s0", "s1", "w0"), tableMetaData.getSections().stream().map(s -> s.getName()).toList());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testApplyViewToTableWithVirtualFields()
+   {
+      CustomizableTableViewsTablePersonalizer personalizer = new CustomizableTableViewsTablePersonalizer();
+      TableMetaDataInput                      tableActionInput = new TableMetaDataInput();
+
+      QTableMetaData baseTable = new QTableMetaData()
+         .withName("vfTable")
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("optional", QFieldType.STRING))
+         .withVirtualField(new QVirtualFieldMetaData("computed", QFieldType.STRING).withLabel("Computed"))
+         .withVirtualField(new QVirtualFieldMetaData("derived", QFieldType.STRING).withLabel("Derived"))
+         .withSection(SectionFactory.defaultT1("id").withName("s0"))
+         .withSection(SectionFactory.defaultT2("optional").withName("s1"));
+
+      /////////////////////////////////////////////////////////////////////////////////
+      // empty view - no virtual fields kept (no "always keep" rules for virtuals)  //
+      /////////////////////////////////////////////////////////////////////////////////
+      QTableMetaData tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of()),
+         baseTable.clone(), tableActionInput);
+
+      assertEquals(1, tableMetaData.getFields().size());
+      assertNotNull(tableMetaData.getField("id"));
+      assertTrue(tableMetaData.getVirtualFields().isEmpty());
+
+      ///////////////////////////////////////////////////////////////
+      // view references one virtual field - only that one is kept //
+      ///////////////////////////////////////////////////////////////
+      tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of(
+            new TableViewField().withFieldName("vfTable.computed").withAccessLevel(READ_ONLY)
+         )),
+         baseTable.clone(), tableActionInput);
+
+      assertEquals(1, tableMetaData.getFields().size());
+      assertEquals(1, tableMetaData.getVirtualFields().size());
+      assertNotNull(tableMetaData.getVirtualFields().get("computed"));
+      assertNull(tableMetaData.getVirtualFields().get("derived"));
+
+      /////////////////////////////////////////////////////////////////////////////
+      // view references both virtual fields and a regular field - all are kept //
+      /////////////////////////////////////////////////////////////////////////////
+      tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of(
+            new TableViewField().withFieldName("vfTable.optional").withAccessLevel(EDITABLE_OPTIONAL),
+            new TableViewField().withFieldName("vfTable.computed").withAccessLevel(READ_ONLY),
+            new TableViewField().withFieldName("vfTable.derived").withAccessLevel(READ_ONLY)
+         )),
+         baseTable.clone(), tableActionInput);
+
+      assertEquals(2, tableMetaData.getFields().size()); // id + optional
+      assertEquals(2, tableMetaData.getVirtualFields().size()); // computed + derived
+
+      assertEquals(List.of("optional"), tableMetaData.getSection("s1").getFieldNames());
+
+      //////////////////////////////////////////////////////////////////
+      // table with no virtual fields at all - should not break       //
+      //////////////////////////////////////////////////////////////////
+      QTableMetaData noVfTable = new QTableMetaData()
+         .withName("noVfTable")
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withSection(SectionFactory.defaultT1("id").withName("s0"));
+
+      tableMetaData = personalizer.applyViewToTable(
+         new TableView().withFields(List.of()),
+         noVfTable.clone(), tableActionInput);
+
+      assertEquals(1, tableMetaData.getFields().size());
+      assertTrue(tableMetaData.getVirtualFields() == null || tableMetaData.getVirtualFields().isEmpty());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testDynamicDefaultValueFields()
+   {
+      ///////////////////////////
+      // empty with empty case //
+      ///////////////////////////
+      QTableMetaData baseTable = new QTableMetaData()
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("secret", QFieldType.STRING).withIsHidden(true))
+         .withField(new QFieldMetaData("mandatory", QFieldType.STRING).withIsRequired(true))
+         .withField(new QFieldMetaData("createDate", QFieldType.DATE_TIME).withBehavior(DynamicDefaultValueBehavior.CREATE_DATE))
+         .withField(new QFieldMetaData("optional", QFieldType.STRING))
+         .withSection(SectionFactory.defaultT1("id").withName("s0"))
+         .withSection(SectionFactory.defaultT2("secret", "mandatory").withName("s1"))
+         .withSection(SectionFactory.defaultT2("optional", "createDate").withName("s2"));
+
+      ////////////////////////////////////////////////////////////////////////
+      // for actions that aren't insert or update, just get pkey & required //
+      ////////////////////////////////////////////////////////////////////////
+      for(AbstractTableActionInput actionInput : List.of(new QueryInput(), new DeleteInput(), new TableMetaDataInput()))
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), actionInput);
+
+         assertEquals(2, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("mandatory")).isNotNull();
+      }
+
+      /////////////////////////////////////////////////////
+      // for insert or update action, get createDate too //
+      /////////////////////////////////////////////////////
+      for(AbstractTableActionInput actionInput : List.of(new InsertInput(), new UpdateInput()))
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), actionInput);
+
+         assertEquals(3, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("mandatory")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("createDate")).isNotNull();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFieldsInSecurityLocks()
+   {
+      ///////////////////////////
+      // empty with empty case //
+      ///////////////////////////
+      QTableMetaData baseTable = new QTableMetaData()
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("a", QFieldType.STRING))
+         .withField(new QFieldMetaData("b", QFieldType.STRING))
+         .withField(new QFieldMetaData("c", QFieldType.STRING))
+         .withField(new QFieldMetaData("d", QFieldType.STRING));
+
+      //////////////////////////////////////////////////////
+      // with no security field, only id should come back //
+      //////////////////////////////////////////////////////
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+
+      ///////////////////////////////////////////////////////
+      // with a simple security field, it should come back //
+      ///////////////////////////////////////////////////////
+      baseTable.setRecordSecurityLocks(List.of(
+         new RecordSecurityLock().withFieldName("a")
+      ));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(2, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("a")).isNotNull();
+      }
+
+      /////////////////////////////////////////////////////////////
+      // with a multi-lock, all included fields should come back //
+      /////////////////////////////////////////////////////////////
+      baseTable.setRecordSecurityLocks(List.of(
+         new MultiRecordSecurityLock()
+            .withOperator(MultiRecordSecurityLock.BooleanOperator.OR)
+            .withLocks(List.of(
+               new RecordSecurityLock().withFieldName("b"),
+               new MultiRecordSecurityLock()
+                  .withOperator(MultiRecordSecurityLock.BooleanOperator.AND)
+                  .withLocks(List.of(
+                     new RecordSecurityLock().withFieldName("c"),
+                     new RecordSecurityLock().withFieldName("d")
+                  ))
+            ))
+      ));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(4, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("b")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("c")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("d")).isNotNull();
+      }
+
+      ///////////////////////////////////////////////////////////
+      // make sure lock field from join table doesn't break us //
+      ///////////////////////////////////////////////////////////
+      baseTable.setRecordSecurityLocks(List.of(
+         new RecordSecurityLock().withFieldName("join.a")
+      ));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testFieldsWithSupplementalMetaData()
+   {
+      ///////////////////////////
+      // empty with empty case //
+      ///////////////////////////
+      QTableMetaData baseTable = new QTableMetaData()
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("a", QFieldType.STRING))
+         .withField(new QFieldMetaData("b", QFieldType.STRING))
+         .withField(new QFieldMetaData("c", QFieldType.STRING))
+         .withField(new QFieldMetaData("d", QFieldType.STRING));
+
+      //////////////////////////////////
+      // base case, should just be id //
+      //////////////////////////////////
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+
+      ///////////////////////////////////////////////////////////////////////
+      // supplemental meta data, but without a rule should not be included //
+      ///////////////////////////////////////////////////////////////////////
+      baseTable.getField("a").withSupplementalMetaData(new CustomizableTableViewsFieldMetaData());
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(1, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+      }
+
+      //////////////////////////////////////////////////////////////////////
+      // supplemental meta data, with the include rule should be included //
+      //////////////////////////////////////////////////////////////////////
+      baseTable.getField("b").withSupplementalMetaData(new CustomizableTableViewsFieldMetaData()
+         .withRule(CustomizableTableViewsFieldMetaData.Rule.ALWAYS_KEEP_FIELD));
+      {
+         QTableMetaData tableMetaData = new CustomizableTableViewsTablePersonalizer().applyViewToTable(
+            new TableView().withFields(List.of()),
+            baseTable.clone(), new QueryInput());
+
+         assertEquals(2, tableMetaData.getFields().size());
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("id")).isNotNull();
+         QFieldMetaDataAssert.assertThat(tableMetaData.getField("b")).isNotNull();
+      }
    }
 
 
@@ -550,6 +846,11 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       new InsertAction().execute(new InsertInput(CustomizableTable.TABLE_NAME).withRecordEntities(List.of(
          new CustomizableTable().withTableName(baseTable.getName()).withIsActive(true))));
 
+      ////////////////////////////////////////////////////////////////
+      // assert system inputSource still gets same as default table //
+      ////////////////////////////////////////////////////////////////
+      assertSame(baseTable, personalizer.execute(new TableMetaDataPersonalizerInput().withTableMetaData(baseTable).withInputSource(QInputSource.SYSTEM)));
+
       ///////////////////////////////////////////
       // assert it's pretty empty with no view //
       ///////////////////////////////////////////
@@ -571,6 +872,11 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       new InsertAction().execute(new InsertInput(TableViewRoleInt.TABLE_NAME).withRecordEntities(List.of(
          new TableViewRoleInt().withRoleId(101).withTableViewId(1))));
 
+      ////////////////////////////////////////////////////////////////
+      // assert system inputSource still gets same as default table //
+      ////////////////////////////////////////////////////////////////
+      assertSame(baseTable, personalizer.execute(new TableMetaDataPersonalizerInput().withTableMetaData(baseTable).withInputSource(QInputSource.SYSTEM)));
+
       QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
       QContext.getQSession().setValue("roleIds", "101");
 
@@ -583,6 +889,54 @@ class CustomizableTableViewsTablePersonalizerTest extends BaseTest
       assertEquals(Set.of("id", "optional"), personalizedTable.getFields().values().stream().map(s -> s.getName()).collect(Collectors.toSet()));
       assertEquals(3, personalizedTable.getSections().size());
       assertEquals(List.of("s0", "s1", "w0"), personalizedTable.getSections().stream().map(s -> s.getName()).toList());
+
+      //////////////////////////////////////////////////////////////////////////
+      // add a join table, and a field from it in the main table's t2 section //
+      //////////////////////////////////////////////////////////////////////////
+      QTableMetaData joinTable = new QTableMetaData()
+         .withName("joinTable")
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("joinField", QFieldType.STRING))
+         .withSection(SectionFactory.defaultT1("id", "joinField").withName("s0"));
+      QContext.getQInstance().addTable(joinTable);
+      QContext.getQInstance().addJoin(new QJoinMetaData().withLeftTable("baseTable").withRightTable("joinTable").withInferredName().withType(JoinType.ONE_TO_ONE).withJoinOn(new JoinOn("id", "joinField")));
+      baseTable.getSection("s1").getFieldNames().add("joinTable.joinField");
+
+      //////////////////////////////////////////
+      // by default, should get the joinField //
+      //////////////////////////////////////////
+      personalizedTable = personalizer.execute(input);
+      assertEquals(List.of("optional", "joinTable.joinField"), personalizedTable.getSection("s1").getFieldNames());
+
+      //////////////////////////////////////////////////////////////////////////////////
+      // activate customization on the join table, which should remove the join field //
+      //////////////////////////////////////////////////////////////////////////////////
+      new InsertAction().execute(new InsertInput(CustomizableTable.TABLE_NAME).withRecordEntities(List.of(
+         new CustomizableTable().withTableName(joinTable.getName()).withIsActive(true))));
+      personalizedTable = personalizer.execute(input);
+      assertEquals(List.of("optional"), personalizedTable.getSection("s1").getFieldNames());
+
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      // add a view to the join table, with a field, and attach it to the view - then the user gets the field back //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+      new InsertAction().execute(new InsertInput(TableView.TABLE_NAME).withRecordEntities(List.of(
+         new TableView().withId(2).withCustomizableTableId(2).withName("a")
+            .withFields(List.of(new TableViewField().withFieldName(joinTable.getName() + ".joinField").withAccessLevel(EDITABLE_OPTIONAL))))));
+      new InsertAction().execute(new InsertInput(TableViewRoleInt.TABLE_NAME).withRecordEntities(List.of(
+         new TableViewRoleInt().withRoleId(101).withTableViewId(2))));
+
+      personalizedTable = personalizer.execute(input);
+      assertEquals(List.of("optional", "joinTable.joinField"), personalizedTable.getSection("s1").getFieldNames());
+
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////
+      // finally, set user to not have this role, make sure the section with the join field disappears     //
+      // (the non-join field will have also gone away by switching to other role, so the section is empty) //
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////
+      QContext.getQSession().setUser(new QUser().withIdReference(UUID.randomUUID().toString()));
+      QContext.getQSession().setValue("roleIds", "102");
+      personalizedTable = personalizer.execute(input);
+      assertNull(personalizedTable.getSection("s1"));
    }
 
 

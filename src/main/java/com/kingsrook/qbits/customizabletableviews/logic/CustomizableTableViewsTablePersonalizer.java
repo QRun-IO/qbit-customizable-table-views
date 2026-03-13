@@ -25,8 +25,10 @@ package com.kingsrook.qbits.customizabletableviews.logic;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import com.kingsrook.qbits.customizabletableviews.model.CustomizableTable;
+import com.kingsrook.qbits.customizabletableviews.model.CustomizableTableViewsFieldMetaData;
 import com.kingsrook.qbits.customizabletableviews.model.FieldAccessLevel;
 import com.kingsrook.qbits.customizabletableviews.model.TableView;
 import com.kingsrook.qbits.customizabletableviews.model.TableViewField;
@@ -56,14 +59,22 @@ import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInpu
 import com.kingsrook.qqq.backend.core.model.actions.tables.QInputSource;
 import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput;
+import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryJoin;
+import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.DynamicDefaultValueBehavior;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.FieldAndJoinTable;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QSupplementalFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.security.MultiRecordSecurityLock;
+import com.kingsrook.qqq.backend.core.model.metadata.security.RecordSecurityLock;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QFieldSection;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
@@ -100,7 +111,6 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
       isTableCustomizableMemoization.clear();
       getEffectiveTableViewByUserMemoization.clear();
    }
-
 
 
 
@@ -153,7 +163,7 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
 
       if(tableView != null)
       {
-         return applyViewToTable(tableView, tableActionInput.getTable().clone());
+         return applyViewToTable(tableView, tableActionInput.getTable().clone(), tableActionInput);
       }
 
       return tableActionInput.getTable();
@@ -164,69 +174,60 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
    /***************************************************************************
     *
     ***************************************************************************/
-   QTableMetaData applyViewToTable(TableView tableView, QTableMetaData cloneTable)
+   QTableMetaData applyViewToTable(TableView tableView, QTableMetaData cloneTable, AbstractTableActionInput tableActionInput)
    {
-      Map<String, QFieldMetaData> cloneFields = cloneTable.getFields();
-      if(cloneFields == null)
-      {
-         cloneFields = new LinkedHashMap<>();
-         cloneTable.setFields(cloneFields);
-      }
-
-      Map<String, QFieldMetaData> fieldsToKeep = new LinkedHashMap<>();
-
-      ///////////////////////////////////////////
-      // figure out which fields the user gets //
-      ///////////////////////////////////////////
-      for(TableViewField tableViewField : CollectionUtils.nonNullList(tableView.getFields()))
-      {
-         try
-         {
-            String         fieldName     = tableViewField.getFieldName().split("\\.")[1];
-            QFieldMetaData fieldMetaData = cloneFields.get(fieldName);
-            if(fieldMetaData != null)
-            {
-               FieldAccessLevel fieldAccessLevel = FieldAccessLevel.getById(tableViewField.getAccessLevel());
-               if(fieldAccessLevel != null)
-               {
-                  fieldAccessLevel.apply(fieldMetaData);
-               }
-
-               fieldsToKeep.put(fieldName, fieldMetaData);
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.warn("Error processing tableViewField", e, logPair("fieldName", tableViewField.getFieldName()));
-         }
-      }
-
-      ///////////////////////////////////////////////////////////
-      // always keep the primary key field and required fields //
-      ///////////////////////////////////////////////////////////
-      Set<String> requiredAndPrimaryKeyFields = new HashSet<>();
-      for(QFieldMetaData field : cloneTable.getFields().values())
-      {
-         String fieldName = field.getName();
-         if(field.getIsRequired() || Objects.equals(fieldName, cloneTable.getPrimaryKeyField()))
-         {
-            if(!fieldsToKeep.containsKey(fieldName))
-            {
-               fieldsToKeep.put(fieldName, cloneFields.get(fieldName));
-            }
-         }
-      }
-
+      Map<String, QFieldMetaData> fieldsToKeep = getFieldsToKeepForTable(tableView, cloneTable, tableActionInput);
       cloneTable.setFields(fieldsToKeep);
+
+      Map<String, QVirtualFieldMetaData> virtualFieldsToKeep = getVirtualFieldsToKeepForTable(tableView, cloneTable, tableActionInput);
+      cloneTable.setVirtualFields(virtualFieldsToKeep);
 
       ///////////////////////////////////////////////////////////
       // remove field names which aren't present from sections //
       ///////////////////////////////////////////////////////////
       for(QFieldSection section : CollectionUtils.nonNullList(cloneTable.getSections()))
       {
-         if(section.getFieldNames() != null)
+         Map<String, Set<String>> getFieldsToKeepFromJoinTableCache = null;
+
+         Iterator<String> fieldListIterator = CollectionUtils.nonNullList(section.getFieldNames()).iterator();
+         while(fieldListIterator.hasNext())
          {
-            section.getFieldNames().removeIf(next -> !fieldsToKeep.containsKey(next));
+            try
+            {
+               String            fieldName         = fieldListIterator.next();
+               FieldAndJoinTable fieldAndJoinTable = FieldAndJoinTable.get(cloneTable, fieldName);
+
+               if(fieldAndJoinTable.joinTable().getName().equals(cloneTable.getName()))
+               {
+                  ////////////////////////////////////////////////////////////////////////////////////////////
+                  // if the field is from this table, then remove it unless it's in the set of ones to keep //
+                  ////////////////////////////////////////////////////////////////////////////////////////////
+                  if(!fieldsToKeep.containsKey(fieldName))
+                  {
+                     fieldListIterator.remove();
+                  }
+               }
+               else
+               {
+                  getFieldsToKeepFromJoinTableCache = Objects.requireNonNullElseGet(getFieldsToKeepFromJoinTableCache, HashMap::new);
+
+                  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  // else the field is from a join table - get that join table's allowed fields for the user, and keep or remove based on that //
+                  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                  Set<String> fieldsToKeepFromJoinTable = getFieldsToKeepFromJoinTable(fieldAndJoinTable.joinTable().getName(), tableActionInput, getFieldsToKeepFromJoinTableCache);
+                  if(!fieldsToKeepFromJoinTable.contains(fieldAndJoinTable.field().getName()))
+                  {
+                     fieldListIterator.remove();
+                  }
+               }
+            }
+            catch(Exception e)
+            {
+               /////////////////////////////////////////////////////////
+               // an unknown field, let's assume it should be removed //
+               /////////////////////////////////////////////////////////
+               fieldListIterator.remove();
+            }
          }
       }
 
@@ -267,6 +268,258 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
 
 
    /***************************************************************************
+    *
+    ***************************************************************************/
+   protected Set<String> getFieldsToKeepFromJoinTable(String joinTableName, AbstractTableActionInput tableActionInput, Map<String, Set<String>> getFieldsToKeepFromJoinTableCache)
+   {
+      return (getFieldsToKeepFromJoinTableCache.computeIfAbsent(joinTableName, k ->
+      {
+         try
+         {
+            if(isTableCustomizable(joinTableName))
+            {
+               ////////////////////////////////////////////////////////////////
+               // if the table is customizable, return set of fields to keep //
+               ////////////////////////////////////////////////////////////////
+               QTableMetaData joinTableClone = QContext.getQInstance().getTable(joinTableName).clone();
+               TableView      joinTableView  = getEffectiveTableViewForCurrentSession(joinTableName);
+               Map<String, QFieldMetaData> joinTableFieldsToKeep = getFieldsToKeepForTable(joinTableView, joinTableClone, tableActionInput);
+               return joinTableFieldsToKeep.keySet();
+            }
+            else
+            {
+               ///////////////////////////////////////////////
+               // else, not customizable, return all fields //
+               ///////////////////////////////////////////////
+               return (QContext.getQInstance().getTable(joinTableName).getFields().keySet());
+            }
+         }
+         catch(QException e)
+         {
+            return Collections.emptySet();
+         }
+      }));
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected Map<String, QFieldMetaData> getFieldsToKeepForTable(TableView tableView, QTableMetaData cloneTable, AbstractTableActionInput tableActionInput)
+   {
+      Map<String, QFieldMetaData> cloneFields = cloneTable.getFields();
+      if(cloneFields == null)
+      {
+         cloneFields = new LinkedHashMap<>();
+         cloneTable.setFields(cloneFields);
+      }
+
+      Map<String, QFieldMetaData> fieldsToKeep = new LinkedHashMap<>();
+
+      /////////////////////////////////////////////
+      // figure out which fields the user gets   //
+      // start with ones in the user's TableView //
+      /////////////////////////////////////////////
+      for(TableViewField tableViewField : CollectionUtils.nonNullList(tableView.getFields()))
+      {
+         try
+         {
+            String         fieldName     = tableViewField.getFieldName().split("\\.")[1];
+            QFieldMetaData fieldMetaData = cloneFields.get(fieldName);
+            if(fieldMetaData != null)
+            {
+               FieldAccessLevel fieldAccessLevel = FieldAccessLevel.getById(tableViewField.getAccessLevel());
+               if(fieldAccessLevel != null)
+               {
+                  fieldAccessLevel.apply(fieldMetaData);
+               }
+
+               fieldsToKeep.put(fieldName, fieldMetaData);
+            }
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error processing tableViewField", e, logPair("fieldName", tableViewField.getFieldName()));
+         }
+      }
+
+      /////////////////////////////////////////////
+      // next look for ones that always get kept //
+      /////////////////////////////////////////////
+      for(QFieldMetaData field : cloneTable.getFields().values())
+      {
+         String fieldName = field.getName();
+         if(!fieldsToKeep.containsKey(fieldName))
+         {
+            if(shouldKeepFieldDueToRules(cloneTable, field, tableActionInput))
+            {
+               fieldsToKeep.put(fieldName, cloneFields.get(fieldName));
+            }
+         }
+      }
+
+      return fieldsToKeep;
+   }
+
+
+
+   /***************************************************************************
+    *
+    ***************************************************************************/
+   protected Map<String, QVirtualFieldMetaData> getVirtualFieldsToKeepForTable(TableView tableView, QTableMetaData cloneTable, AbstractTableActionInput tableActionInput)
+   {
+      Map<String, QVirtualFieldMetaData> cloneFields = cloneTable.getVirtualFields();
+      if(cloneFields == null)
+      {
+         return Collections.emptyMap();
+      }
+
+      Map<String, QVirtualFieldMetaData> fieldsToKeep = new LinkedHashMap<>();
+
+      /////////////////////////////////////////////
+      // figure out which fields the user gets   //
+      // start with ones in the user's TableView //
+      /////////////////////////////////////////////
+      for(TableViewField tableViewField : CollectionUtils.nonNullList(tableView.getFields()))
+      {
+         try
+         {
+            String                fieldName     = tableViewField.getFieldName().split("\\.")[1];
+            QVirtualFieldMetaData fieldMetaData = cloneFields.get(fieldName);
+            if(fieldMetaData != null)
+            {
+               FieldAccessLevel fieldAccessLevel = FieldAccessLevel.getById(tableViewField.getAccessLevel());
+               if(fieldAccessLevel != null)
+               {
+                  fieldAccessLevel.apply(fieldMetaData);
+               }
+
+               fieldsToKeep.put(fieldName, fieldMetaData);
+            }
+         }
+         catch(Exception e)
+         {
+            LOG.warn("Error processing tableViewField", e, logPair("fieldName", tableViewField.getFieldName()));
+         }
+      }
+
+      ///////////////////////////////////////////////////////////////////////////////
+      // unlike normal fields, there are no 'always keep' rules for virtual fields //
+      ///////////////////////////////////////////////////////////////////////////////
+
+      return fieldsToKeep;
+   }
+
+
+
+   /***************************************************************************
+    * check if any system-defined rules make it so that a field should always
+    * be kept.
+    *
+    * <p>built-in rules are:</p>
+    * <ul>
+    * <li>field is required</li>
+    * <li>field is primary key</li>
+    * <li>field is part of table's security locks</li>
+    * <li>there's supplemental metadata from this qbit that says to keep the field</li>
+    * <li>this is an insert or update, and there's a {@link DynamicDefaultValueBehavior}</li>
+    * </ul>
+    *
+    * also - an application could override this method in a subclass to add
+    * additional rules.
+    ***************************************************************************/
+   protected boolean shouldKeepFieldDueToRules(QTableMetaData cloneTable, QFieldMetaData field, AbstractTableActionInput tableActionInput)
+   {
+      if(field.getIsRequired() || Objects.equals(field.getName(), cloneTable.getPrimaryKeyField()))
+      {
+         ///////////////////////////////////////////////////////////
+         // always keep the primary key field and required fields //
+         ///////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      if(doRecordSecurityLocksContainField(cloneTable.getRecordSecurityLocks(), field))
+      {
+         /////////////////////////////////////////////////////////////
+         // keep fields that are part of the table's security locks //
+         /////////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      if(doesSupplementalMetaDataSayToKeepField(field))
+      {
+         //////////////////////////////////////////////////////////
+         // keep a field if it's marked as being always-included //
+         //////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      boolean isInsertOrUpdate = (tableActionInput instanceof InsertInput) || (tableActionInput instanceof UpdateInput);
+      if(isInsertOrUpdate && field.getBehaviorOnlyIfSet(DynamicDefaultValueBehavior.class) != null)
+      {
+         //////////////////////////////////////////////////////////////////////////////////////////////////////
+         // if this is for an insert or update, then keep any fields that have a DynamicDefaultValueBehavior //
+         // e.g., createDates, modifyDates, things that capture userId                                       //
+         //////////////////////////////////////////////////////////////////////////////////////////////////////
+         return (true);
+      }
+
+      ////////////////////////////////////////////
+      // by default, no rule matched, so say no //
+      ////////////////////////////////////////////
+      return (false);
+   }
+
+
+
+   /***************************************************************************
+    * Check if the supplemental meta data from this qbit for a field says
+    * that the field should always be kept.
+    ***************************************************************************/
+   protected boolean doesSupplementalMetaDataSayToKeepField(QFieldMetaData field)
+   {
+      QSupplementalFieldMetaData supplementalMetaData = field.getSupplementalMetaData(CustomizableTableViewsFieldMetaData.TYPE);
+      if(supplementalMetaData instanceof CustomizableTableViewsFieldMetaData customizableTableViewsFieldMetaData)
+      {
+         if(CustomizableTableViewsFieldMetaData.Rule.ALWAYS_KEEP_FIELD.equals(customizableTableViewsFieldMetaData.getRule()))
+         {
+            return (true);
+         }
+      }
+
+      return (false);
+   }
+
+
+
+   /***************************************************************************
+    * Check if a list of record security locks include a field, recursively 
+    * processing {@link MultiRecordSecurityLock}s
+    ***************************************************************************/
+   protected boolean doRecordSecurityLocksContainField(List<RecordSecurityLock> locks, QFieldMetaData field)
+   {
+      for(RecordSecurityLock recordSecurityLock : CollectionUtils.nonNullList(locks))
+      {
+         if(recordSecurityLock instanceof MultiRecordSecurityLock multiRecordSecurityLock)
+         {
+            if(doRecordSecurityLocksContainField(multiRecordSecurityLock.getLocks(), field))
+            {
+               return (true);
+            }
+         }
+         else if(field.getName().equals(recordSecurityLock.getFieldName()))
+         {
+            return true;
+         }
+      }
+
+      return false;
+   }
+
+
+
+   /***************************************************************************
     * the assumption is, that this method is called AFTER we've identified that
     * a table is customizable (and customizaztion is active) - so - if we fail
     * to find a view, we return a new/blank/empty view - so user gets "nothing"
@@ -294,7 +547,9 @@ public class CustomizableTableViewsTablePersonalizer implements TableMetaDataPer
          {
             Set<Integer> roleIds = Arrays.stream(roleIdsString.split(",")).map(Integer::parseInt).collect(Collectors.toSet());
             tableViews = new QueryAction().execute(new QueryInput(TableView.TABLE_NAME)
-                  .withFilter(new QQueryFilter().withCriteria(new QFilterCriteria(TableViewRoleInt.TABLE_NAME + ".roleId", QCriteriaOperator.IN, roleIds)))
+                  .withFilter(new QQueryFilter()
+                     .withCriteria(new QFilterCriteria(TableViewRoleInt.TABLE_NAME + ".roleId", QCriteriaOperator.IN, roleIds))
+                     .withCriteria(new QFilterCriteria(CustomizableTable.TABLE_NAME + ".tableName", QCriteriaOperator.EQUALS, tableName)))
                   .withQueryJoin(new QueryJoin(TableViewRoleInt.TABLE_NAME))
                   .withIncludeAssociations(true))
                .getRecords();

@@ -32,11 +32,15 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.values.SearchPossibleValueSourceInput;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.fields.QVirtualFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValue;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.SectionFactory;
 import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 
 /*******************************************************************************
@@ -82,6 +86,62 @@ class CustomizableTableFieldPVSTest extends BaseTest
       assertEquals("Extra", possibleValues.get(0).getLabel());
       assertEquals("testTable.optional", possibleValues.get(1).getId());
       assertEquals("Optional", possibleValues.get(1).getLabel());
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void testWithVirtualFields() throws QException
+   {
+      QTableMetaData testTable = new QTableMetaData()
+         .withName("testTable")
+         .withPrimaryKeyField("id")
+         .withField(new QFieldMetaData("id", QFieldType.STRING).withIsEditable(false))
+         .withField(new QFieldMetaData("optional", QFieldType.STRING).withLabel("Optional"))
+         .withVirtualField(new QVirtualFieldMetaData("computed", QFieldType.STRING).withLabel("Computed"))
+         .withVirtualField(new QVirtualFieldMetaData("hiddenVirtual", QFieldType.STRING).withIsHidden(true).withLabel("Hidden Virtual"))
+         .withSection(SectionFactory.defaultT1("id").withName("s0"))
+         .withSection(SectionFactory.defaultT2("optional").withName("s1"));
+      QContext.getQInstance().addTable(testTable);
+
+      new InsertAction().execute(new InsertInput(CustomizableTable.TABLE_NAME).withRecordEntities(List.of(
+         new CustomizableTable().withTableName(testTable.getName()).withIsActive(true))));
+
+      Integer tableViewId = 17;
+      new InsertAction().execute(new InsertInput(TableView.TABLE_NAME).withRecordEntities(List.of(
+         new TableView().withId(tableViewId).withCustomizableTableId(1).withName("a"))));
+
+      /////////////////////////////////////////////////////////////////////
+      // search should include the non-hidden virtual field in results  //
+      /////////////////////////////////////////////////////////////////////
+      List<QPossibleValue<String>> possibleValues = new CustomizableTableFieldPVS().search(new SearchPossibleValueSourceInput().withOtherValues(Map.of("tableViewId", tableViewId)));
+      assertEquals(2, possibleValues.size());
+      assertThat(possibleValues)
+         .anyMatch(pv1 -> "testTable.computed".equals(pv1.getId()) && "Computed".equals(pv1.getLabel()))
+         .anyMatch(pv1 -> "testTable.optional".equals(pv1.getId()) && "Optional".equals(pv1.getLabel()));
+
+      ///////////////////////////////////////////////////////////////////
+      // getPossibleValue should resolve a virtual field by table.name //
+      ///////////////////////////////////////////////////////////////////
+      QPossibleValue<String> pv = new CustomizableTableFieldPVS().getPossibleValue("testTable.computed");
+      assertNotNull(pv);
+      assertEquals("testTable.computed", pv.getId());
+      assertEquals("Computed", pv.getLabel());
+
+      /////////////////////////////////////////////////////
+      // getPossibleValue for a normal field still works //
+      /////////////////////////////////////////////////////
+      QPossibleValue<String> pvNormal = new CustomizableTableFieldPVS().getPossibleValue("testTable.optional");
+      assertNotNull(pvNormal);
+      assertEquals("Optional", pvNormal.getLabel());
+
+      /////////////////////////////////////////////////////////
+      // getPossibleValue for a nonexistent field returns null //
+      /////////////////////////////////////////////////////////
+      assertNull(new CustomizableTableFieldPVS().getPossibleValue("testTable.doesNotExist"));
    }
 
 }

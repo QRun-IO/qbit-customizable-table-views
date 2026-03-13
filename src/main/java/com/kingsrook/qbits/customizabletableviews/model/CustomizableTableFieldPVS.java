@@ -96,6 +96,12 @@ public class CustomizableTableFieldPVS implements QCustomPossibleValueProvider<S
             {
                return (new QPossibleValue<>(idString, fieldMetaData.getLabel()));
             }
+
+            fieldMetaData = table.getVirtualFields() == null ? null : table.getVirtualFields().get(fieldName);
+            if(fieldMetaData != null)
+            {
+               return (new QPossibleValue<>(idString, fieldMetaData.getLabel()));
+            }
          }
       }
 
@@ -128,7 +134,13 @@ public class CustomizableTableFieldPVS implements QCustomPossibleValueProvider<S
 
             if(table != null)
             {
-               for(QFieldMetaData field : table.getFields().values())
+               List<QFieldMetaData> fields = new ArrayList<>(table.getFields().values());
+               if(table.getVirtualFields() != null)
+               {
+                  fields.addAll(table.getVirtualFields().values());
+               }
+
+               for(QFieldMetaData field : fields)
                {
                   if(field.getName().equals(table.getPrimaryKeyField()))
                   {
