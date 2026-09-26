@@ -96,6 +96,32 @@ class TableViewFieldCustomizerTest extends BaseTest
 
 
 
+   /*******************************************************************************
+    ** a sparse update (e.g., only accessLevel set) must validate against the
+    ** fieldName from the old record.
+    *******************************************************************************/
+   @Test
+   void testSparseUpdateUsesOldRecordValues() throws QException
+   {
+      QContext.getQInstance().addTable(new QTableMetaData()
+         .withName("testTable3")
+         .withField(new QFieldMetaData("mandatory", QFieldType.STRING).withIsRequired(true))
+         .withField(new QFieldMetaData("optional", QFieldType.STRING)));
+
+      Optional<List<QRecord>> oldRecordList = Optional.of(List.of(
+         new TableViewField().withId(1).withFieldName("testTable3.mandatory").withAccessLevel(FieldAccessLevel.EDITABLE_REQUIRED).toQRecord(),
+         new TableViewField().withId(2).withFieldName("testTable3.optional").withAccessLevel(FieldAccessLevel.EDITABLE_OPTIONAL).toQRecord()));
+
+      QRecord mandatoryToReadOnly = new QRecord().withValue("id", 1).withValue("accessLevel", FieldAccessLevel.READ_ONLY.getId());
+      QRecord optionalToReadOnly  = new QRecord().withValue("id", 2).withValue("accessLevel", FieldAccessLevel.READ_ONLY.getId());
+      new TableViewFieldCustomizer().preInsertOrUpdate(null, List.of(mandatoryToReadOnly, optionalToReadOnly), false, oldRecordList);
+
+      assertThat(mandatoryToReadOnly.getErrors()).hasSizeGreaterThan(0);
+      assertThat(optionalToReadOnly.getErrors()).isNullOrEmpty();
+   }
+
+
+
    /***************************************************************************
     *
     ***************************************************************************/

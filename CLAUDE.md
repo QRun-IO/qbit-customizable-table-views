@@ -18,5 +18,6 @@ Notes for agents working here:
   CONTRIBUTING.md are copy-pasted from qbit-user-role-permissions.
 - Licensing metadata is contradictory (LICENSE/NOTICE = Apache-2.0; pom, file headers,
   checkstyle template = AGPL-3.0; README footer says proprietary). Open PR #5 fixes the pom.
-- Depends on `qqq-bom-pom:0.40.0-SNAPSHOT` — snapshot resolution may break; see dossier
-  "v4.0 impact" before bumping qqq versions.
+- Default builds take the qqq version only from `qbit-build-parent` (2.0.0 = qqq 4.0.0);
+  do not add an always-on `qqq-bom-pom` import (ADR-0007). To check the next qqq line, run
+  `mvn -B verify -Pqqq-snapshot` (4.1.0-SNAPSHOT; override with `-Dqqq.snapshot.version`).
