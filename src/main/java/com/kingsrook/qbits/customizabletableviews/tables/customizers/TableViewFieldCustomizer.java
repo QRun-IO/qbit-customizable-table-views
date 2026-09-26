@@ -36,6 +36,7 @@ import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.statusmessages.BadInputStatusMessage;
 import com.kingsrook.qqq.backend.core.model.statusmessages.SystemErrorStatusMessage;
+import com.kingsrook.qqq.backend.core.utils.ValueUtils;
 
 
 /*******************************************************************************
@@ -57,8 +58,8 @@ public class TableViewFieldCustomizer implements TableCustomizerInterface
          try
          {
             Integer id            = record.getValueInteger("id");
-            String  fieldName     = RecordCustomizerUtilityInterface.getValueFromRecordOrOldRecord("fieldName", record, id, oldRecordMap);
-            String  accessLevelId = RecordCustomizerUtilityInterface.getValueFromRecordOrOldRecord("accessLevel", record, id, oldRecordMap);
+            String  fieldName     = ValueUtils.getValueAsString(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("fieldName", record, id, oldRecordMap));
+            String  accessLevelId = ValueUtils.getValueAsString(RecordCustomizerUtilityInterface.getValueFromRecordElseFromOldRecord("accessLevel", record, id, oldRecordMap));
 
             String[] parts     = fieldName.split("\\.");
             String   tableName = parts[0];
