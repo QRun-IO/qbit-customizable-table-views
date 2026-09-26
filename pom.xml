@@ -105,4 +105,28 @@
       </repository>
    </repositories>
 
+   <profiles>
+      <!-- Opt-in check against another qqq line, e.g. -Dqqq.version=4.1.0-SNAPSHOT.     -->
+      <!-- Inactive by default, so normal builds take the qqq version from the parent. -->
+      <profile>
+         <id>qqq-version-override</id>
+         <activation>
+            <property>
+               <name>qqq.version</name>
+            </property>
+         </activation>
+         <dependencyManagement>
+            <dependencies>
+               <dependency>
+                  <groupId>com.kingsrook.qqq</groupId>
+                  <artifactId>qqq-bom-pom</artifactId>
+                  <version>${qqq.version}</version>
+                  <type>pom</type>
+                  <scope>import</scope>
+               </dependency>
+            </dependencies>
+         </dependencyManagement>
+      </profile>
+   </profiles>
+
 </project>
