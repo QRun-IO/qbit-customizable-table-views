@@ -2,7 +2,7 @@
 [![Build Status](https://dl.circleci.com/status-badge/img/gh/Kingsrook/qbit-customizable-table-views/tree/develop.svg?style=svg)](https://circleci.com/gh/Kingsrook/qbit-customizable-table-views)
 [![Maven Central](https://img.shields.io/maven-central/v/com.kingsrook.qbits/qbit-customizable-table-views.svg)](https://central.sonatype.com/namespace/com.kingsrook.qbits)
 [![Java](https://img.shields.io/badge/java-17+-blue.svg)](https://adoptium.net/)
-[![License](https://img.shields.io/badge/license-AGPL%203.0-green.svg)](LICENSE.txt)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 
 **QBit Customizable Table Views** provides table personalization capabilities for QQQ applications, allowing users to customize which fields and widgets they see based on their roles and permissions.
 
@@ -161,4 +161,4 @@ Stable and production-ready.
 
 ## License
 
-Proprietary - QRun.IO
+Apache-2.0 - See [LICENSE](LICENSE) and [NOTICE](NOTICE).
