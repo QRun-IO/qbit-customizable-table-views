@@ -1,4 +1,6 @@
-# Contributing to QBit User Role Permissions
+# Contributing
 
-* See Project [Contributing](https://github.com/Kingsrook/qqq/blob/develop/CONTRIBUTING.md)
+See the QQQ project [Contributing Guide](https://github.com/Kingsrook/qqq/blob/develop/CONTRIBUTING.md) for code standards and PR workflow.
+
+For release procedures, see [RELEASING.md](RELEASING.md).
 
