@@ -41,6 +41,10 @@ import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
  *******************************************************************************/
 public class CustomizableTableViewsQBitProducer implements QBitMetaDataProducer<CustomizableTableViewsQBitConfig>
 {
+   public static final String GROUP_ID    = "com.kingsrook.qbits";
+   public static final String ARTIFACT_ID = "customizable-table-views";
+   public static final String VERSION     = "0.4.0";
+
    private CustomizableTableViewsQBitConfig customizableTableViewsQBitConfig;
 
 
@@ -52,9 +56,9 @@ public class CustomizableTableViewsQBitProducer implements QBitMetaDataProducer<
    public QBitMetaData getQBitMetaData()
    {
       QBitMetaData qBitMetaData = new QBitMetaData()
-         .withGroupId("com.kingsrook.qbits")
-         .withArtifactId("customizable-table-views")
-         .withVersion("0.1.0")
+         .withGroupId(GROUP_ID)
+         .withArtifactId(ARTIFACT_ID)
+         .withVersion(VERSION)
          .withNamespace(getNamespace())
          .withConfig(getQBitConfig());
 
