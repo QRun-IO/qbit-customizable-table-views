@@ -38,7 +38,7 @@ This QBit lets users save these configurations as named views. Create a view, ad
 
 ### Prerequisites
 
-- QQQ application (v0.35.0+)
+- QQQ application (v4.1.0+)
 - QQQ dashboard deployed
 - Database backend configured
 
